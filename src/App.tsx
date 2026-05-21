@@ -900,12 +900,7 @@ export default function App() {
                 </ul>
               </div>
 
-              <div className="bg-[#edf4ed] border border-[#bcccbc] rounded-xl p-3.5 text-xs text-[#2a3c2a] flex items-start gap-2 select-text">
-                <CheckCircle2 className="w-4 h-4 text-[#364d36] shrink-0 mt-0.5 animate-pulse" />
-                <span>
-                  <strong>Đính kèm AI Coach Sư Phạm:</strong> Sau khi gửi đáp án, bạn có quyền vấn ý kiến từ **Tutor AI (Gemini 3.5)** để nhận bản phân tích lỗi chính tả học thuật bằng tiếng Việt chi tiết nhất.
-                </span>
-              </div>
+
             </div>
 
             <div className="mt-6 flex justify-end">
