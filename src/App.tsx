@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { curatedPassages } from "./data/passages";
 import { Passage, UserProgress, AIFeedback } from "./types";
+import { Header } from "./components/Header";
+import { PassageSelector } from "./components/PassageSelector";
 import { 
   GraduationCap, 
   Timer, 
@@ -11,18 +13,19 @@ import {
   AlertTriangle, 
   RotateCcw, 
   CheckCircle2, 
-  XCircle, 
   ChevronRight, 
   Info, 
   BrainCircuit, 
   Check, 
   HelpCircle, 
-  Trophy, 
   Compass, 
   Pause, 
   Play, 
   Flame, 
-  X
+  X,
+  BookMarked,
+  Layers,
+  Sparkle
 } from "lucide-react";
 
 export default function App() {
@@ -57,6 +60,15 @@ export default function App() {
   // UI state
   const [focusedWordId, setFocusedWordId] = useState<number | null>(null);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
+  const [showSelectorShelf, setShowSelectorShelf] = useState<boolean>(false);
+
+  // Custom AI Generation States
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatorError, setGeneratorError] = useState<string | null>(null);
+
+  // AI Tutor feedback states
+  const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null);
+  const [isFetchingTutor, setIsFetchingTutor] = useState<boolean>(false);
 
   const [practiceMode, setPracticeMode] = useState<"practice" | "timed">(() => {
     return (localStorage.getItem("toefl_practice_mode") as "practice" | "timed") || "timed";
@@ -171,6 +183,8 @@ export default function App() {
     setCountUpTime(0);
     setIsTimerPaused(false);
     setFocusedWordId(null);
+    setAiFeedback(null); // Clear previous AI evaluations
+    setShowSelectorShelf(false); // Collapse selector shelf on select
   };
 
   // 4. Input changed handlers for individual char fields
@@ -307,13 +321,78 @@ export default function App() {
 
   // 7. Reset exercise action
   const handleResetChallenge = () => {
-    if (window.confirm("Are you sure you want to clear your current progress and restart the timer?")) {
+    if (window.confirm("Bạn có chắc chắn muốn xóa tiến trình hiện tạ và đặt lại đồng hồ tính giờ?")) {
       setUserAnswers({});
       setIsSubmitted(false);
       setTimeRemaining(TIMER_START_SECONDS);
       setCountUpTime(0);
       setIsTimerPaused(false);
       setFocusedWordId(null);
+      setAiFeedback(null); // Clear previous AI answers
+    }
+  };
+
+  // API Call: Fetch Tutor evaluation feedback
+  const fetchAiTutorFeedback = async () => {
+    if (!currentPassage || isFetchingTutor) return;
+    setIsFetchingTutor(true);
+    try {
+      const res = await fetch("/api/tutor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passage: currentPassage,
+          userAnswers: userAnswers,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.feedback) {
+        setAiFeedback(data.feedback);
+      } else {
+        alert(data.error || "Không thể tải nhận xét từ AI Tutor lúc này.");
+      }
+    } catch (error: any) {
+      console.error("AI Tutor Error:", error);
+      alert("Lỗi kết nối máy chủ khi gọi AI Tutor.");
+    } finally {
+      setIsFetchingTutor(false);
+    }
+  };
+
+  // API Call: Generate Custom TOEFL Reading passage from a topic
+  const handleGenerateCustom = async (topic: string) => {
+    setIsGenerating(true);
+    setGeneratorError(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic }),
+      });
+      const data = await res.json();
+      if (data.success && data.passage) {
+        const generatedPassage: Passage = {
+          ...data.passage,
+          id: `custom_${Date.now()}`
+        };
+        setPassages((prev) => [generatedPassage, ...prev]);
+        setCurrentPassageId(generatedPassage.id);
+        setUserAnswers({});
+        setIsSubmitted(false);
+        setTimeRemaining(TIMER_START_SECONDS);
+        setCountUpTime(0);
+        setIsTimerPaused(false);
+        setFocusedWordId(null);
+        setAiFeedback(null);
+        setShowSelectorShelf(false); // Collapse selector shelf on select
+      } else {
+        setGeneratorError(data.error || "Không thể biên soạn chủ đề. Thử dùng chủ đề đơn giản hơn.");
+      }
+    } catch (error: any) {
+      console.error("Lỗi biên tập AI:", error);
+      setGeneratorError("Lỗi đường truyền hoặc máy chủ bận.");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -348,8 +427,10 @@ export default function App() {
             <span 
               key={index} 
               id={`word-blank-wrapper-${id}`}
-              className={`inline-flex flex-col items-center relative select-none mx-1 px-1 rounded-lg transition-all cursor-pointer ${
-                isFocused ? "bg-blue-50/50 outline outline-2 outline-blue-500/20" : "hover:bg-slate-50"
+              className={`inline-flex items-center relative select-none mx-0.5 px-1.5 py-0.5 rounded-lg transition-all duration-300 cursor-pointer ${
+                isFocused 
+                  ? "bg-amber-100/40 outline outline-1.5 outline-[#b45309]/30" 
+                  : "hover:bg-[#f6f2eb]"
               }`}
               onClick={() => {
                 if (!isSubmitted) {
@@ -369,9 +450,9 @@ export default function App() {
                 }
               }}
             >
-              <span className="flex items-center font-serif text-xl font-semibold text-slate-800 tracking-normal select-none">
+              <span className="flex items-center font-serif text-lg tracking-normal select-none">
                 {/* Prefix part */}
-                <span className="text-slate-800 font-bold select-text mr-0.5">{task.prefix}</span>
+                <strong className="text-charcoal-deep font-bold font-serif select-text mr-0.5">{task.prefix}</strong>
                 
                 {/* Sequential individual character input cells */}
                 <span className="inline-flex gap-[2px] items-center">
@@ -392,16 +473,16 @@ export default function App() {
                         disabled={isSubmitted}
                         maxLength={1}
                         placeholder="_"
-                        className={`w-5 sm:w-6 h-7 text-center font-mono focus:outline-none transition-all outline-none font-normal border-b-2 text-base rounded-t ${
+                        className={`w-4.5 sm:w-5 h-6.5 text-center font-mono focus:outline-none transition-all duration-300 outline-none font-bold text-sm border-b rounded-t ${
                           isSubmitted
                             ? isCellCorrect
-                              ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                              : "border-red-400 bg-rose-55 text-rose-800"
+                              ? "border-[#364d36] bg-[#edf4ed] text-[#2a3c2a]"
+                              : "border-red-400 bg-[#fff5f5] text-red-900"
                             : isFocused
-                              ? "border-blue-600 bg-blue-50/60 text-blue-900"
+                              ? "border-[#b45309] bg-amber-50/50 text-[#b45309]"
                               : displayChar
-                                ? "border-blue-200 bg-slate-50 text-slate-950"
-                                : "border-slate-300 bg-transparent text-slate-400 hover:border-slate-400"
+                                ? "border-charcoal-deep bg-[#f2ede4] text-charcoal-deep"
+                                : "border-[#ccc6be] bg-transparent text-[#b0a79d] hover:border-[#b45350]"
                         }`}
                         onFocus={() => setFocusedWordId(id)}
                       />
@@ -412,14 +493,14 @@ export default function App() {
               
               {/* Submission bubble feedback icon */}
               {isSubmitted && (
-                <span className="absolute -top-3 right-0 z-10">
+                <span className="absolute -top-2.5 -right-1 z-10 scale-90">
                   {isCorrectAnswer ? (
-                    <span className="flex items-center justify-center w-4 h-4 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
-                      <Check className="w-3 h-3 stroke-[3.5]" />
+                    <span className="flex items-center justify-center w-3.5 h-3.5 bg-emerald-700 text-white rounded-full p-0.5 shadow-sm border border-[#fff]">
+                      <Check className="w-2.5 h-2.5 stroke-[4]" />
                     </span>
                   ) : (
-                    <span className="flex items-center justify-center w-4 h-4 bg-red-500 text-white rounded-full p-0.5 shadow-sm">
-                      <X className="w-3 h-3 stroke-[3.5]" />
+                    <span className="flex items-center justify-center w-3.5 h-3.5 bg-red-650 text-white rounded-full p-0.5 shadow-sm border border-[#fff]">
+                      <X className="w-2.5 h-2.5 stroke-[4]" />
                     </span>
                   )}
                 </span>
@@ -428,227 +509,177 @@ export default function App() {
           );
         }
       }
-      return <span key={index} className="font-serif select-text text-xl leading-[2.1] text-slate-700 font-normal">{part}</span>;
+      return <span key={index} className="font-serif select-text text-[17px] leading-[2.1] text-[#423d38] font-normal">{part}</span>;
     });
   }, [currentPassage, userAnswers, isSubmitted, focusedWordId]);
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans select-none" id="toefl-practice-box">
+    <div className="min-h-screen bg-[#faf7f2] text-charcoal-deep flex flex-col font-sans select-none" id="toefl-practice-box">
       
-      {/* 1. Header Area with exact Professional Polish layout */}
-      <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-6 sm:px-10 shrink-0 sticky top-0 z-20 shadow-sm" id="header-nav">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-blue-800 rounded shadow-md shadow-blue-800/10 flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-xl font-mono">T</span>
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-800 leading-tight flex items-center gap-1.5">
-              TOEFL Reading: <span className="text-blue-800">Complete the Words</span>
-            </h1>
-            <p className="text-xs text-slate-500 uppercase tracking-widest font-sans font-bold">
-              Reading Section • Micro-Literacy
-            </p>
-          </div>
-        </div>
+      {/* Dynamic modular Header using standard design */}
+      <Header 
+        category={currentPassage?.category || "Linguistics"} 
+        total={10} 
+        score={scoreResult} 
+        isSubmitted={isSubmitted} 
+        timeSpent={practiceMode === "timed" ? timeRemaining : countUpTime} 
+      />
 
-        {/* Display live stats: Timer & Tracker */}
-        <div className="flex items-center gap-6 sm:gap-10">
-          <div className="text-center">
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">
-              {practiceMode === "timed" ? "Thời gian còn lại" : "Thời gian tự luyện"}
-            </p>
-            <p className={`text-xl font-mono font-bold ${practiceMode === "timed" && timeRemaining <= 60 ? "text-red-600 animate-pulse" : "text-blue-800"}`}>
-              {practiceMode === "timed" ? formatTime(timeRemaining) : formatTime(countUpTime)}
-            </p>
+      {/* 2. Top Banner Menu: Dynamic configuration shelf & Always-Visible 3 Academic Passages */}
+      <section className="bg-warm-ivory border-b border-[#e6e2db] px-5 sm:px-8 py-5 flex flex-col gap-5 shrink-0" id="controls-panel">
+        
+        {/* Row 1: Left label / Title & right settings options */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-[#b45309] rounded-full"></span>
+            <h2 className="text-[10px] font-bold uppercase tracking-wider text-[#8e877e] font-mono">
+              Danh sách bài đọc iBT tuyển chọn (Curated academic curriculum)
+            </h2>
           </div>
-          <div className="h-10 w-px bg-slate-200 hidden sm:block"></div>
           
-          <div className="text-center hidden sm:block">
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-tight">Từ đã điền</p>
-            <p className="text-xl font-mono font-bold text-slate-700">
-              {answersFilledCount.toString().padStart(2, "0")} <span className="text-slate-300">/</span> 10
-            </p>
-          </div>
-        </div>
-      </header>
-
-      {/* 2. Top Banner: Selection & Dashboard controls */}
-      <section className="bg-slate-50 border-b border-slate-200 px-6 sm:px-10 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shrink-0" id="controls-panel">
-        {/* Passages List Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-tight mr-2 flex items-center gap-1.5">
-            <Compass className="w-4 h-4 text-slate-400" /> Chọn chủ đề:
-          </span>
-          {passages.map((p) => {
-            const isSelected = p.id === currentPassageId;
-            return (
+          {/* Settings and help */}
+          <div className="flex items-center gap-3">
+            <div className="flex bg-[#edeae3] p-0.5 rounded-xl border border-[#dcd6ca]">
               <button
-                key={p.id}
-                id={`btn-select-topic-${p.id}`}
-                onClick={() => handleSelectPassage(p.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  isSelected
-                    ? "bg-slate-800 text-white border-slate-800 shadow-sm"
-                    : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                id="mode-timed"
+                onClick={() => {
+                  setPracticeMode("timed");
+                  setIsTimerPaused(false);
+                }}
+                disabled={isSubmitted}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  practiceMode === "timed"
+                    ? "bg-white text-charcoal-deep shadow-xs"
+                    : "text-[#6e685f] hover:text-[#1c1a17] disabled:opacity-50"
                 }`}
               >
-                {p.title} <span className="text-[9px] font-mono opacity-60 ml-1">({p.category})</span>
+                <Timer className="w-3.5 h-3.5 text-[#b45309]" /> Tính giờ (10 phút)
               </button>
-            );
-          })}
-        </div>
+              <button
+                id="mode-practice"
+                onClick={() => {
+                  setPracticeMode("practice");
+                  setIsTimerPaused(false);
+                }}
+                disabled={isSubmitted}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  practiceMode === "practice"
+                    ? "bg-white text-charcoal-deep shadow-xs"
+                    : "text-[#6e685f] hover:text-[#1c1a17] disabled:opacity-50"
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-[#b45309]" /> Luyện tự do
+              </button>
+            </div>
 
-        {/* Practice Mode Setup */}
-        <div className="flex items-center gap-4">
-          <div className="flex bg-slate-200 p-0.5 rounded-lg border border-slate-300">
+            {/* Pause Timer toggle in Practice Mode */}
+            {!isSubmitted && (
+              <button
+                id="btn-pause-timer"
+                onClick={() => setIsTimerPaused(!isTimerPaused)}
+                className="text-[#6e685f] hover:text-charcoal-deep p-2 rounded-xl border border-transparent hover:border-[#e0dad1] hover:bg-white transition-all cursor-pointer"
+                title={isTimerPaused ? "Tiếp tục" : "Tạm dừng"}
+              >
+                {isTimerPaused ? <Play className="w-4 h-4 fill-charcoal-deep" /> : <Pause className="w-4 h-4" />}
+              </button>
+            )}
+
+            {/* Guided Help Modal toggle */}
             <button
-              id="mode-timed"
-              onClick={() => {
-                setPracticeMode("timed");
-                setIsTimerPaused(false);
-              }}
-              disabled={isSubmitted}
-              className={`px-3 py-1 rounded text-xs font-semibold transition-all flex items-center gap-1 ${
-                practiceMode === "timed"
-                  ? "bg-white text-slate-950 shadow-xs"
-                  : "text-slate-600 hover:text-slate-900 disabled:opacity-50"
-              }`}
+              id="btn-help-modal"
+              onClick={() => setShowHelpModal(true)}
+              className="text-[#6e685f] hover:text-charcoal-deep hover:bg-white border border-[#e0dad1] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
-              <Timer className="w-3 h-3" /> Tính giờ (10p)
-            </button>
-            <button
-              id="mode-practice"
-              onClick={() => {
-                setPracticeMode("practice");
-                setIsTimerPaused(false);
-              }}
-              disabled={isSubmitted}
-              className={`px-3 py-1 rounded text-xs font-semibold transition-all flex items-center gap-1 ${
-                practiceMode === "practice"
-                  ? "bg-white text-slate-950 shadow-xs"
-                  : "text-slate-600 hover:text-slate-900 disabled:opacity-50"
-              }`}
-            >
-              <Flame className="w-3 h-3" /> Chế độ tự luyện
+              <HelpCircle className="w-4 h-4 text-[#8a8175]" /> Hướng dẫn
             </button>
           </div>
+        </div>
 
-          {/* Pause Timer toggle in Practice Mode */}
-          {!isSubmitted && (
-            <button
-              id="btn-pause-timer"
-              onClick={() => setIsTimerPaused(!isTimerPaused)}
-              className="text-slate-500 hover:text-slate-800 p-1.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-white"
-              title={isTimerPaused ? "Tiếp tục" : "Tạm dừng"}
-            >
-              {isTimerPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            </button>
-          )}
-
-          {/* Guided Help Modal toggle */}
-          <button
-            id="btn-help-modal"
-            onClick={() => setShowHelpModal(true)}
-            className="text-slate-500 hover:text-slate-800 hover:bg-white border border-transparent hover:border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
-          >
-            <HelpCircle className="w-3.5 h-3.5" /> Hướng dẫn
-          </button>
+        {/* Row 2: Always-Visible 3 Passages Display cards */}
+        <div className="w-full">
+          <PassageSelector 
+            passages={passages}
+            currentPassageId={currentPassageId}
+            onSelectPassage={handleSelectPassage}
+          />
         </div>
       </section>
 
-      {/* 3. Main Workspace split */}
+      {/* 3. Main Workspace Editorial Split */}
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden relative" id="layout-body">
         
-        {/* Left Side: Dynamic Reading Passage panel */}
-        <section className="flex-1 p-6 sm:p-12 overflow-y-auto bg-white shadow-inner flex flex-col justify-between" id="reading-passage-view">
-          <div className="max-w-3xl mx-auto w-full">
+        {/* Left Side: Modern Academic Reading Paper sheet */}
+        <section className="flex-1 p-6 md:p-14 overflow-y-auto bg-warm-cream flex flex-col justify-between" id="reading-passage-view">
+          <div className="max-w-2.5xl mx-auto w-full bg-warm-ivory border border-[#eae4da] rounded-2xl p-6 sm:p-12 shadow-xs relative">
             
-            {/* Task Instructions Banner on Top */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-8" id="top-task-instructions">
-              <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-                Hướng dẫn làm bài
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans font-medium">
-                Điền các chữ cái còn thiếu để hoàn thành 10 từ học thuật được đánh dấu trong bài đọc. 
-                Mỗi ký tự <code className="font-mono bg-slate-100 px-1 py-0.5 text-xs rounded text-slate-800">_</code> đại diện cho đúng một chữ cái còn thiếu.
-              </p>
-            </div>
-
-            {/* Passage Meta info and dynamic AI labels */}
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-[10px] font-mono tracking-widest uppercase font-bold text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
-                Phân loại: {currentPassage?.category}
+            {/* Elegant Top label and category */}
+            <div className="flex items-center justify-between border-b border-[#f2ece3] pb-4 mb-6">
+              <span className="text-[10px] font-mono tracking-widest uppercase font-black text-[#b45309] bg-amber-50 px-2.5 py-1 rounded border border-amber-200/50">
+                Phân Loại Học Thuật • {currentPassage?.category}
               </span>
-              <span className="text-xs text-slate-400 italic">
-                {currentPassageId.startsWith("custom_") && "✨ Tự động tạo bởi AI"}
+              <span className="text-xs text-[#a29b90] font-mono select-text italic">
+                {currentPassageId.startsWith("custom_") ? "✨ Biên soạn bởi AI" : "📖 Curated Preset"}
               </span>
             </div>
 
-            <h2 className="text-3xl font-serif font-black text-slate-800 mb-8 tracking-tight">
-              {currentPassage?.title}
-            </h2>
-
-            {/* Simulated Paused Screen Cover */}
+            {/* Simulated Paused Cover */}
             {isTimerPaused && !isSubmitted ? (
-               <div className="bg-slate-50/95 border border-slate-200/60 rounded-2xl p-10 py-16 text-center shadow-lg my-10 max-w-2xl mx-auto flex flex-col items-center">
-                <Timer className="w-12 h-12 text-blue-700 animate-bounce mb-3" />
-                <h3 className="text-xl font-bold text-slate-800">Đã tạm dừng bài luyện tập</h3>
-                <p className="text-sm text-slate-500 max-w-md mt-2">
-                  Đồng hồ đếm ngược đã dừng. Hãy tập trung cao độ và nhấn tiếp tục khi bạn sẵn sàng làm bài đọc học thuật.
+              <div className="bg-[#FAF8F5]/98 rounded-2xl p-10 py-16 text-center border border-[#e0dac1] max-w-lg mx-auto flex flex-col items-center">
+                <Timer className="w-12 h-12 text-[#b45309] animate-bounce mb-3" />
+                <h3 className="text-lg font-serif font-black text-charcoal-deep">Đã tạm dừng bài luyện tập</h3>
+                <p className="text-xs text-[#6e685f] max-w-sm mt-2 leading-relaxed font-sans">
+                  Bộ tính thời gian đã dừng. Hãy thư giãn tinh thần, tập trung cao độ và tiếp tục khi bạn sẵn sàng cải thiện kỹ năng ngôn ngữ của mình.
                 </p>
                 <button
                   id="btn-resume-timer"
                   onClick={() => setIsTimerPaused(false)}
-                  className="mt-6 px-8 py-3 bg-blue-800 text-white rounded-xl font-bold text-sm hover:bg-blue-900 shadow-md shadow-blue-800/10 transition-all flex items-center gap-2"
+                  className="mt-6 px-6 py-2.5 bg-charcoal-deep hover:bg-[#34302c] text-warm-cream rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer border border-[#3e3b37]"
                 >
-                  <Play className="w-4 h-4 fill-white" /> Tiếp tục luyện tập
+                  <Play className="w-3.5 h-3.5 fill-warm-cream text-warm-cream" /> Tiếp tục bài đọc
                 </button>
               </div>
             ) : (
-              /* Actual Interactive Paragraph Text */
-              <div className="text-slate-800 bg-white/50 relative">
+              /* Beautiful Scholarly Editorial Paragraph Text */
+              <div className="text-charcoal-deep relative select-text" id="editorial-paragraph">
+                <h1 className="text-2.5xl sm:text-3.5xl font-serif font-black text-charcoal-deep mb-8 leading-tight tracking-tight">
+                  {currentPassage?.title}
+                </h1>
                 <p className="leading-[2.2] select-text">
                   {renderedPassageText}
                 </p>
               </div>
             )}
 
-            {/* Hint Card corresponding to the active focused word input */}
+            {/* Hint Callout Card corresponding to the active focused word input */}
             {focusedWordId !== null && currentPassage && (
-              <div className="mt-12 bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-xs relative" id="active-hint-callout">
+              <div className="mt-12 bg-[#FAF8F5] border border-[#dcd6ca] rounded-2xl p-5 shadow-xs relative animate-slide-up" id="active-hint-callout">
                 <button
                   id="btn-close-hint"
                   onClick={() => setFocusedWordId(null)}
-                  className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200"
+                  className="absolute top-3.5 right-3.5 text-[#a49e94] hover:text-charcoal-deep p-1.5 rounded-full hover:bg-[#edeae3] cursor-pointer"
                   title="Đóng gợi ý"
                 >
                   <X className="w-4 h-4" />
                 </button>
                 <div className="flex items-start gap-3">
-                  <div className="bg-blue-100 text-blue-800 p-1.5 rounded-lg mt-0.5">
-                    <Info className="w-5 h-5" />
+                  <div className="bg-amber-50 text-[#b45309]/80 p-2 rounded-xl mt-0.5 border border-amber-100">
+                    <Info className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-mono uppercase text-slate-400 font-extrabold">
-                      Gợi ý cho ô trống #{focusedWordId + 1}
+                    <h4 className="text-[9px] font-mono uppercase tracking-wider text-[#9a9287] font-extrabold flex items-center gap-1">
+                      <span>Gợi ý cho từ trống số #{focusedWordId + 1}</span>
                     </h4>
-                    <p className="text-sm font-semibold text-slate-800 mt-1">
-                      {currentPassage.wordTasks[focusedWordId].hint}
+                    <p className="text-xs font-serif italic text-charcoal-deep mt-1 leading-relaxed max-w-xl font-medium select-text">
+                      "{currentPassage.wordTasks[focusedWordId].hint}"
                     </p>
                     {isSubmitted ? (
-                      <p className="text-xs text-indigo-700 font-mono mt-2 font-semibold">
-                        Từ đúng: <strong className="font-bold underline">{currentPassage.wordTasks[focusedWordId].prefix}</strong> + <strong className="font-sans font-bold bg-indigo-50 border border-indigo-100 px-1 py-0.5 rounded text-indigo-900">{currentPassage.wordTasks[focusedWordId].missing}</strong> = <strong className="font-bold">{currentPassage.wordTasks[focusedWordId].fullWord}</strong>
+                      <p className="text-xs text-[#b45309] font-mono mt-3.5 font-extrabold">
+                        Đáp án: <strong className="underline decoration-wavy">{currentPassage.wordTasks[focusedWordId].prefix}</strong> + <strong className="bg-amber-50 border border-amber-200/60 px-1 py-0.5 rounded text-charcoal-deep font-sans">{currentPassage.wordTasks[focusedWordId].missing}</strong> = <strong className="underline">{currentPassage.wordTasks[focusedWordId].fullWord}</strong>
                       </p>
                     ) : (
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-slate-400">Tiền tố cho sẵn: </span>
-                        <kbd className="text-xs bg-slate-200 border border-slate-300 px-1.5 py-0.5 rounded font-mono text-slate-800 uppercase font-black tracking-wider">
-                          {currentPassage.wordTasks[focusedWordId].prefix}
-                        </kbd>
-                        <span className="text-xs text-slate-400">Độ dài phần thiếu: </span>
-                        <span className="text-xs bg-slate-200 border border-slate-300 px-1.5 py-0.5 rounded font-semibold text-slate-800">
-                          {currentPassage.wordTasks[focusedWordId].missing.length} ký tự
-                        </span>
+                      <div className="flex items-center gap-3.5 mt-3 text-[11px] text-[#6e685f]">
+                        <span className="font-sans">Tiền tố: <kbd className="font-mono bg-[#eae4da] text-charcoal-deep px-1.5 py-0.5 rounded font-black uppercase">{currentPassage.wordTasks[focusedWordId].prefix}</kbd></span>
+                        <span className="font-sans">Độ dài cần điền: <strong className="text-charcoal-deep text-xs font-bold font-mono bg-[#eae4da] px-1.5 py-0.5 rounded">{currentPassage.wordTasks[focusedWordId].missing.length}</strong> ký tự</span>
                       </div>
                     )}
                   </div>
@@ -656,35 +687,61 @@ export default function App() {
               </div>
             )}
 
-            {/* Curated scholarly explanation shown once standard test is submitted */}
+            {/* Curated Scholarly Discourse Explanation shown once standard test is submitted */}
             {isSubmitted && currentPassage && (
-              <div className="mt-8 border-t border-slate-100 pt-8" id="scholarly-analysis">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <BrainCircuit className="w-5 h-5 text-indigo-600" />
-                  Phân tích diễn ngôn học thuật
+              <div className="mt-12 border-t border-[#f2ece3] pt-8" id="scholarly-analysis">
+                <h3 className="text-sm font-serif font-black text-charcoal-deep flex items-center gap-2">
+                  <BrainCircuit className="w-4 h-4 text-[#b45309]" />
+                  Phân Tích Diễn Ngôn Học Thuật
                 </h3>
-                <p className="text-sm text-slate-600 leading-relaxed mt-2 p-5 bg-indigo-50/50 border border-indigo-100 rounded-xl font-medium">
+                <p className="text-xs sm:text-sm text-[#524c45] leading-relaxed mt-3 p-5 bg-[#FAF8F5] border border-[#e0dac1] rounded-2xl font-serif">
                   {currentPassage.explanation}
                 </p>
               </div>
             )}
           </div>
           
-          {/* Subtle note in reading block */}
-          <div className="mt-8 text-center text-xs text-slate-400 italic">
-            Bài thi đọc TOEFL iBT thường kiểm tra năng lực liên kết diễn ngôn và các mối quan hệ ngữ cảnh.
+          <div className="mt-8 text-center text-[11px] text-[#9a9287] font-serif tracking-wide">
+            Bài thi đọc TOEFL iBT đánh giá năng lực phán đoán cấu trúc ngữ nghĩa và liên kết văn xuôi trong môi trường đại học.
           </div>
         </section>
 
-        {/* Right Side: Sidebar Panel (Task Instructions, Tracker, custom generator) */}
-        <aside className="w-full lg:w-96 bg-slate-100 border-t lg:border-t-0 lg:border-l border-slate-200 p-6 sm:p-8 flex flex-col gap-6 overflow-y-auto shrink-0" id="sidebar-panel">
+        {/* Right Side: Sidebar Panel (Assessment, Vocabulary tracker, AI scholar tutor) */}
+        <aside className="w-full lg:w-96 bg-[#FAF8F5] border-t lg:border-t-0 lg:border-l border-[#e6e2db] p-6 sm:p-7 flex flex-col gap-6 overflow-y-auto shrink-0" id="sidebar-panel">
           
+          {/* Main Scoring evaluation (Active once submitted) */}
+          {isSubmitted && (
+            <div className="bg-charcoal-deep text-warm-cream rounded-2xl p-5 border border-[#3e3b37] shadow-sm animate-fade-in" id="local-evaluation-display">
+              <h3 className="text-[9px] font-mono font-extrabold uppercase tracking-widest text-[#a29b90] mb-3 flex items-center gap-1.5 border-b border-[#3e3b37] pb-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
+                Kết Quả Đánh Giá Sơ Bộ
+              </h3>
+              <div>
+                <h4 className="text-4xl font-black font-serif text-[#fcfbfa] flex items-baseline gap-1">
+                  {scoreResult} <span className="text-xl text-[#a29b90] font-normal">/ 10</span>
+                </h4>
+                <p className="text-xs text-[#eae7e2] leading-relaxed mt-2.5 select-text font-serif italic">
+                  {scoreResult === 10
+                    ? "Xuất sắc! Bạn hoàn toàn nắm bắt được mạch diễn ngôn của tác giả."
+                    : scoreResult >= 8
+                    ? "Ấn tượng! Phản xạ từ vựng của bạn cực kỳ linh hoạt."
+                    : scoreResult >= 5
+                    ? "Kết quả khá tốt! Hãy chú ý các phần phân tích ngữ pháp liên kết ở bên."
+                    : "Cố gắng lên! Hãy nhấp vào các ô trống còn thiếu hoặc xem giải nghĩa để học thêm."}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Vocabulary Completion Progress card */}
-          <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs flex flex-col" id="tracker-card">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Theo dõi từ vựng
+          <div className="bg-white rounded-2xl p-5 border border-[#e6e2db] shadow-xs flex flex-col" id="tracker-card">
+            <h3 className="text-[10px] font-bold text-[#8e877e] uppercase tracking-wider mb-3.5 font-mono flex items-center justify-between">
+              <span>Tiến trình hoàn thành từ</span>
+              <span className="font-mono text-[11px] text-charcoal-deep bg-[#f5f1ea] px-2 py-0.5 rounded-md border border-[#e2dcd2]">
+                {answersFilledCount} / 10
+              </span>
             </h3>
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="grid grid-cols-2 gap-2 text-[10.5px]">
               {currentPassage?.wordTasks.map((task) => {
                 const answerValue = (userAnswers[task.id] || "").replace(/\s/g, "");
                 const isCorrectAnswer = answerValue.toLowerCase() === task.missing.toLowerCase();
@@ -695,19 +752,19 @@ export default function App() {
 
                 if (isSubmitted) {
                   if (isCorrectAnswer) {
-                    chipStyle = "bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold";
+                    chipStyle = "bg-[#edf4ed] text-[#2a3c2a] border-[#bcccbc] font-bold";
                     indicatorText = `✓ ${task.fullWord}`;
                   } else {
-                    chipStyle = "bg-rose-50 text-rose-800 border-red-200 font-semibold";
+                    chipStyle = "bg-[#fff5f5] text-red-900 border-[#f0c2c2] font-semibold";
                     indicatorText = `✗ ${task.prefix}${answerValue || "?"} (${task.fullWord})`;
                   }
                 } else {
                   if (isFilledIn) {
-                    chipStyle = "bg-blue-50 text-blue-800 border-blue-200 font-medium";
+                    chipStyle = "bg-amber-50/50 text-[#b45309] border-[#f0d6b2] font-semibold";
                     indicatorText = `${task.id + 1}. ${task.prefix}${answerValue}`;
                   } else {
-                    chipStyle = "bg-white text-slate-400 border-slate-200 border-dashed italic";
-                    indicatorText = `${task.id + 1}. Đang chờ...`;
+                    chipStyle = "bg-[#faf8f5] text-[#9c9388] border-[#e0dad1] border-dashed italic hover:bg-white";
+                    indicatorText = `${task.id + 1}. Gõ để điền...`;
                   }
                 }
 
@@ -723,58 +780,128 @@ export default function App() {
                         setFocusedWordId(task.id);
                       }
                     }}
-                    className={`p-2.5 rounded border text-left cursor-pointer transition-all ${chipStyle}`}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all duration-300 ${chipStyle}`}
                   >
-                    <span className="truncate block select-all">{indicatorText}</span>
+                    <span className="truncate block font-sans">{indicatorText}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Kết quả bài làm (Active once submitted) */}
+          {/* AI Educational Tutor Section */}
           {isSubmitted && (
-            <div className="bg-slate-950 text-slate-50 rounded-2xl p-5 border border-slate-900 shadow-md scroll-mt-4" id="local-evaluation-display">
-              <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 font-mono mb-3 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Kết Quả Bài Làm
-              </h3>
-
-              <div>
-                <h4 className="text-3xl font-black font-mono text-white flex items-baseline gap-1">
-                  {scoreResult} / 10
-                  <span className="text-xs text-slate-400 font-normal ml-1">Điểm Học Thuật</span>
-                </h4>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mt-2 font-sans font-medium">
-                  {scoreResult === 10
-                    ? "Xuất sắc! Bạn đã trả lời đúng hoàn toàn tất cả các từ học thuật. Hãy tiếp tục duy trì phong độ này cho các bài đọc tiếp theo."
-                    : scoreResult >= 8
-                    ? "Rất tốt! Bạn có phản xạ từ vựng học thuật cực kỳ nhạy bén và hiểu rõ cấu trúc bài khóa."
-                    : scoreResult >= 5
-                    ? "Kết quả khá ổn! Bạn đã đoán đúng phần lớn các từ vựng học thuật chính. Hãy xem kỹ các từ chưa đúng bên dưới."
-                    : "Cố gắng lên! Bài đọc học thuật TOEFL iBT có nhiều từ vựng phức tạp. Hãy nhấp vào các ô từ trong bài đọc hoặc xem danh sách phía dưới để học từ đúng."}
-                </p>
+            <div className="bg-charcoal-deep text-warm-cream rounded-2xl p-5 border border-[#3e3b37] space-y-4 shadow-md">
+              <div className="flex items-center justify-between border-b border-[#3e3b37] pb-3">
+                <h3 className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                  Bác Sĩ Học Thuật (AI Agent)
+                </h3>
+                {aiFeedback ? (
+                  <span className="text-[10px] bg-amber-400/10 text-amber-300 border border-amber-400/20 px-2 py-0.5 rounded-md font-serif italic">
+                    Đã nhận xét
+                  </span>
+                ) : (
+                  <button
+                    id="btn-trigger-ai-tutor"
+                    onClick={fetchAiTutorFeedback}
+                    disabled={isFetchingTutor}
+                    className="text-[10px] bg-[#b45309] hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg transition-all duration-300 flex items-center gap-1 cursor-pointer border border-[#c26218]"
+                  >
+                    {isFetchingTutor ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Đang chấm...
+                      </>
+                    ) : (
+                      <>
+                        <BrainCircuit className="w-3 h-3 text-amber-300" />
+                        Vấn chi tiết từ AI ✨
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
+
+              {isFetchingTutor && (
+                <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
+                  <Loader2 className="w-6 h-6 text-amber-400 animate-spin" />
+                  <p className="text-xs text-[#a29b90] font-mono animate-pulse">
+                    AI đang phân tách bản thảo phản xạ ngôn học...
+                  </p>
+                </div>
+              )}
+
+              {!isFetchingTutor && !aiFeedback && (
+                <div className="py-2 text-center text-xs text-[#a29b90] leading-relaxed">
+                  Nhấn nút <strong className="text-warm-cream">Vấn chi tiết từ AI</strong> để xem báo cáo ngữ âm, bài tập lỗi sai và phân tích liên kết iBT bằng Tiếng Việt.
+                </div>
+              )}
+
+              {aiFeedback && (
+                <div className="space-y-3.5 animate-slide-up">
+                  <div className="bg-[#24211d] p-3.5 rounded-xl border border-[#3e3b37]">
+                    <h4 className="text-[10px] font-mono text-[#a29b90] uppercase font-bold">
+                      Nhận xét của AI Tutor:
+                    </h4>
+                    <p className="text-xs text-warm-cream mt-1.5 leading-relaxed font-serif italic select-text">
+                      "{aiFeedback.overallComments}"
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-mono text-[#a29b90] uppercase font-bold">
+                      Chi tiết từng từ khóa:
+                    </h4>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {aiFeedback.wordExplanations && Array.isArray(aiFeedback.wordExplanations) ? (
+                        aiFeedback.wordExplanations.map((item: any, idx: number) => {
+                          const isWordCorrect = item.isCorrect;
+                          return (
+                            <div key={idx} className={`p-2.5 rounded-xl border text-xs select-text ${
+                              isWordCorrect 
+                                ? "bg-[#1f281f] border-[#2d422d] text-emerald-200/90" 
+                                : "bg-[#281f1f] border-[#422d2d] text-rose-200/90"
+                            }`}>
+                              <div className="flex items-center justify-between font-mono font-bold text-[9px] uppercase">
+                                <span>Từ #{item.id + 1}: <strong className="underline underline-offset-2 font-serif text-[11px] font-bold text-white">{item.word}</strong></span>
+                                <span>{isWordCorrect ? "✓ Đúng" : "✗ Sai"}</span>
+                              </div>
+                              <p className="mt-1.5 text-[11px] leading-relaxed text-[#eae7e2] font-serif select-text">
+                                {item.tutorNote}
+                              </p>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="text-xs text-[#a29b90] italic">
+                          Không có phân bổ bài học chi tiết.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </aside>
       </main>
 
-      {/* 4. Footer Area with exact Professional Polish layout */}
-      <footer className="h-20 bg-white border-t border-slate-200 flex items-center justify-between px-6 sm:px-10 shrink-0 z-10" id="footer-actions">
+      {/* 4. Footer Workspace with exact clean spacing */}
+      <footer className="h-20 bg-warm-ivory border-t border-[#e6e2db] flex items-center justify-between px-6 sm:px-10 shrink-0 z-10" id="footer-actions">
         <div className="flex gap-4">
           <button 
             id="btn-footer-reset"
             onClick={handleResetChallenge}
-            className="px-5 py-2.5 border border-slate-300 rounded-lg text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-xs"
+            className="px-5 py-2.5 border border-[#d2ccd0] hover:border-charcoal-deep rounded-xl text-charcoal-deep text-xs font-bold bg-white hover:bg-neutral-50 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400" /> Làm lại bài này
+            <RotateCcw className="w-3.5 h-3.5 text-[#8c857b]" /> Làm lại bài này
           </button>
         </div>
 
         <div className="flex items-center gap-6">
-          <p className="text-xs text-slate-400 italic hidden md:block">
-            Trạng thái bài làm được tự động lưu lại.
+          <p className="text-[11px] text-[#8e877e] italic hidden md:block">
+            Bài thi được lưu tạm thời trên trình duyệt của bạn.
           </p>
           
           {isSubmitted ? (
@@ -789,10 +916,11 @@ export default function App() {
                   setCountUpTime(0);
                   setIsTimerPaused(false);
                   setFocusedWordId(null);
+                  setAiFeedback(null);
                 }}
-                className="px-5 py-3 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-bold rounded-xl transition-all"
+                className="px-5 py-3 border border-[#e0dad1] bg-white hover:bg-[#faf8f5] text-[#1c1a17] text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               >
-                Làm lại từ đầu
+                Nhập lại từ đầu
               </button>
               
               {/* Next topic button */}
@@ -803,10 +931,10 @@ export default function App() {
                   const nextIndex = (currentIndex + 1) % passages.length;
                   handleSelectPassage(passages[nextIndex].id);
                 }}
-                className="px-6 py-3 bg-slate-900 text-white hover:bg-slate-850 rounded-xl text-sm font-bold shadow-md transition-all flex items-center gap-1.5"
+                className="px-6 py-3 bg-charcoal-deep hover:bg-[#34302c] text-warm-cream rounded-xl text-xs font-bold shadow-md transition-all duration-300 flex items-center gap-1.5 cursor-pointer border border-[#3e3b37]"
               >
                 Bài đọc tiếp theo
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4 h-4 text-warm-cream/80" />
               </button>
             </div>
           ) : (
@@ -814,9 +942,9 @@ export default function App() {
               id="btn-submit-assessment"
               onClick={handleSubmitQuiz}
               disabled={answersFilledCount === 0}
-              className="px-8 sm:px-10 py-3 bg-blue-800 text-white rounded font-bold hover:bg-blue-900 transition-colors shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none"
+              className="px-8 sm:px-10 py-3 bg-[#b45309] disabled:bg-[#ccc6be] text-warm-cream rounded-xl font-bold text-xs hover:bg-amber-750 transition-colors shadow-sm disabled:shadow-none cursor-pointer border border-[#c26218]"
             >
-              Nộp bài & Xem nhận xét
+              Nộp bài & Kiểm tra đáp án
             </button>
           )}
         </div>
@@ -824,52 +952,52 @@ export default function App() {
 
       {/* 5. Guided Help / Reference standard modal */}
       {showHelpModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="help-modal-panel">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl relative border border-slate-200">
+        <div className="fixed inset-0 bg-[#1e1c19]/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="help-modal-panel">
+          <div className="bg-warm-ivory rounded-2xl max-w-lg w-full p-6 shadow-xl relative border border-[#e6e2db] animate-slide-up">
             <button
               id="btn-close-help-modal"
               onClick={() => setShowHelpModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100"
+              className="absolute top-4.5 right-4.5 text-[#8e877e] hover:text-charcoal-deep p-1.5 rounded-full hover:bg-[#f2ece3] cursor-pointer"
               title="Đóng hướng dẫn"
             >
               <X className="w-5 h-5" />
             </button>
             
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <div className="flex items-center gap-2 mb-4 border-b border-[#f2ece3] pb-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-[#b45309] flex items-center justify-center border border-amber-200/50">
                 <GraduationCap className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800">
-                Hướng dẫn làm bài TOEFL: Hoàn thành từ
+              <h3 className="text-base font-serif font-black text-charcoal-deep">
+                Cẩm nang hoàn thành từ (TOEFL Micro-literacy)
               </h3>
             </div>
 
-            <div className="space-y-4 text-sm text-slate-600 leading-relaxed font-sans font-medium">
-              <p>
-                Trong các bài kiểm tra micro-literacy phần đọc của kỳ thi TOEFL iBT tiêu chuẩn, bạn sẽ được đọc các văn bản học thuật thực tế với một số chữ cái đã bị lược bớt để đánh giá tư duy cấu trúc ngữ pháp, liên kết diễn ngôn và từ vựng chuyên ngành.
+            <div className="space-y-4 text-xs sm:text-sm text-[#524c45] leading-relaxed font-sans">
+              <p className="select-text">
+                Dạng bài rèn luyện Micro-Literacy mô phỏng chuẩn xác Task 1 trong kỹ năng đọc hiểu của iBT TOEFL. Bằng cách ẩn bớt các chữ cái cuối của cấu trúc thuật ngữ, hệ thống kiểm toán chính xác năng lực phán đoán gốc liên kết, năng cú từ chuyên ngành và quán luật ngữ pháp văn cảnh.
               </p>
               
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <h4 className="text-xs font-bold text-slate-800 uppercase font-mono tracking-tight">
-                  Chiến thuật làm bài:
+              <div className="bg-warm-cream p-4 rounded-xl border border-[#e0dad1] space-y-2.5">
+                <h4 className="text-[10px] font-bold text-charcoal-deep uppercase font-mono tracking-wider flex items-center gap-1">
+                  💡 Quy định & Cơ chế làm bài:
                 </h4>
-                <ul className="list-disc list-inside text-xs space-y-2.5 text-slate-600 pl-1">
+                <ul className="list-disc list-inside text-xs space-y-2 text-[#6e685f] pl-1 select-text">
                   <li>
-                    <strong className="text-slate-800">Đếm số chữ cái:</strong> Mỗi ký tự gạch chân đại diện cho <span className="underline">đúng một</span> chữ cái còn thiếu. Hãy quan sát giới hạn số ô nhập!
+                    <strong className="text-charcoal-deep">Đúng độ dài chữ cái:</strong> Mỗi vạch trống gạch dưới đại diện cho đúng một từ đơn vị chữ cái. Đọc kỹ đếm chính xác số ô còn trống của ô chọn!
                   </li>
                   <li>
-                    <strong className="text-slate-800">Liên từ & Đại từ liên kết:</strong> Các giới từ thông dụng (ví dụ: <em>of, in, into, and</em>) và đại từ (ví dụ: <em>they, these, their</em>) là những điểm trọng tâm kiểm tra.
+                    <strong className="text-charcoal-deep">Lực phán vị chính xác:</strong> Tập trung giải quyết các liên từ cú thể (như <em>although, through, because</em>) hoặc đại hệ từ liên kết (như <em>they, these, which</em>) để tóm chặt ý luận văn cảnh.
                   </li>
                   <li>
-                    <strong className="text-slate-800">Chuyển ô tự động:</strong> Việc nhập các ký tự để hoàn thành từ sẽ tự động di chuyển con trỏ chuột sang ô trống tiếp theo để bạn hoàn toàn tập trung vào mạch đọc.
+                    <strong className="text-charcoal-deep">Tự động chuyển hộp tập trung:</strong> Sau khi nhập ký tự vào một hộp chữ cái riêng lẻ, tiêu điểm sẽ tự động dời sang ô kế cận giúp bạn hoàn toàn giữ mạch văn.
                   </li>
                 </ul>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-650 shrink-0 mt-0.5" />
+              <div className="bg-[#edf4ed] border border-[#bcccbc] rounded-xl p-3.5 text-xs text-[#2a3c2a] flex items-start gap-2 select-text">
+                <CheckCircle2 className="w-4 h-4 text-[#364d36] shrink-0 mt-0.5 animate-pulse" />
                 <span>
-                  <strong>Hệ thống chấm điểm tức thì:</strong> Sau khi gửi bài, hệ thống sẽ ngay lập tức so sánh câu trả lời của bạn với đáp án chính thức và xuất kết quả học tập chi tiết tại chỗ!
+                  <strong>Đính kèm AI Coach Sư Phạm:</strong> Sau khi gửi đáp án, bạn có quyền vấn ý kiến từ **Tutor AI (Gemini 3.5)** để nhận bản phân tích lỗi chính tả học thuật bằng tiếng Việt chi tiết nhất.
                 </span>
               </div>
             </div>
@@ -878,9 +1006,9 @@ export default function App() {
               <button
                 id="btn-dismiss-help"
                 onClick={() => setShowHelpModal(false)}
-                className="px-6 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all"
+                className="px-6 py-2.5 bg-charcoal-deep hover:bg-[#34302c] text-warm-cream hover:text-white rounded-xl text-xs font-bold transition-all border border-[#3e3b37] cursor-pointer"
               >
-                Đồng ý & Bắt đầu
+                Nhất Trí & Bắt Đầu
               </button>
             </div>
           </div>
