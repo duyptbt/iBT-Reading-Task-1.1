@@ -584,14 +584,7 @@ export default function App() {
               </button>
             )}
 
-            {/* Guided Help Modal toggle */}
-            <button
-              id="btn-help-modal"
-              onClick={() => setShowHelpModal(true)}
-              className="text-[#6e685f] hover:text-charcoal-deep hover:bg-white border border-[#e0dad1] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <HelpCircle className="w-4 h-4 text-[#8a8175]" /> Hướng dẫn
-            </button>
+
           </div>
         </div>
 
@@ -856,65 +849,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* 5. Guided Help / Reference standard modal */}
-      {showHelpModal && (
-        <div className="fixed inset-0 bg-[#1e1c19]/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="help-modal-panel">
-          <div className="bg-warm-ivory rounded-2xl max-w-lg w-full p-6 shadow-xl relative border border-[#e6e2db] animate-slide-up">
-            <button
-              id="btn-close-help-modal"
-              onClick={() => setShowHelpModal(false)}
-              className="absolute top-4.5 right-4.5 text-[#8e877e] hover:text-charcoal-deep p-1.5 rounded-full hover:bg-[#f2ece3] cursor-pointer"
-              title="Đóng hướng dẫn"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div className="flex items-center gap-2 mb-4 border-b border-[#f2ece3] pb-3">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-[#b45309] flex items-center justify-center border border-amber-200/50">
-                <GraduationCap className="w-5 h-5" />
-              </div>
-              <h3 className="text-base font-serif font-black text-charcoal-deep">
-                Cẩm nang hoàn thành từ (TOEFL Micro-literacy)
-              </h3>
-            </div>
 
-            <div className="space-y-4 text-xs sm:text-sm text-[#524c45] leading-relaxed font-sans">
-              <p className="select-text">
-                Dạng bài rèn luyện Micro-Literacy mô phỏng chuẩn xác Task 1 trong kỹ năng đọc hiểu của iBT TOEFL. Bằng cách ẩn bớt các chữ cái cuối của cấu trúc thuật ngữ, hệ thống kiểm toán chính xác năng lực phán đoán gốc liên kết, năng cú từ chuyên ngành và quán luật ngữ pháp văn cảnh.
-              </p>
-              
-              <div className="bg-warm-cream p-4 rounded-xl border border-[#e0dad1] space-y-2.5">
-                <h4 className="text-[10px] font-bold text-charcoal-deep uppercase font-mono tracking-wider flex items-center gap-1">
-                  💡 Quy định & Cơ chế làm bài:
-                </h4>
-                <ul className="list-disc list-inside text-xs space-y-2 text-[#6e685f] pl-1 select-text">
-                  <li>
-                    <strong className="text-charcoal-deep">Đúng độ dài chữ cái:</strong> Mỗi vạch trống gạch dưới đại diện cho đúng một từ đơn vị chữ cái. Đọc kỹ đếm chính xác số ô còn trống của ô chọn!
-                  </li>
-                  <li>
-                    <strong className="text-charcoal-deep">Lực phán vị chính xác:</strong> Tập trung giải quyết các liên từ cú thể (như <em>although, through, because</em>) hoặc đại hệ từ liên kết (như <em>they, these, which</em>) để tóm chặt ý luận văn cảnh.
-                  </li>
-                  <li>
-                    <strong className="text-charcoal-deep">Tự động chuyển hộp tập trung:</strong> Sau khi nhập ký tự vào một hộp chữ cái riêng lẻ, tiêu điểm sẽ tự động dời sang ô kế cận giúp bạn hoàn toàn giữ mạch văn.
-                  </li>
-                </ul>
-              </div>
-
-
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                id="btn-dismiss-help"
-                onClick={() => setShowHelpModal(false)}
-                className="px-6 py-2.5 bg-charcoal-deep hover:bg-[#34302c] text-warm-cream hover:text-white rounded-xl text-xs font-bold transition-all border border-[#3e3b37] cursor-pointer"
-              >
-                Nhất Trí & Bắt Đầu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
