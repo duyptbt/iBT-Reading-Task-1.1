@@ -118,7 +118,7 @@ export const curatedPassages: Passage[] = [
         id: 4,
         fullWord: "chlorophyll",
         prefix: "chlor",
-        missing: "phyll",
+        missing: "ophyll",
         hint: "The green pigment responsible for absorbing light (noun)"
       },
       {
@@ -205,7 +205,7 @@ export const curatedPassages: Passage[] = [
         fullWord: "hand",
         prefix: "ha",
         missing: "nd",
-        hint: "Noun/adj referring to manual operations or tools ('hand tools')"
+        hint: "Noun/adj referring to manual operations or tools"
       },
       {
         id: 6,
